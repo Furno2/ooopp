@@ -1,0 +1,4 @@
+package new
+
+class InteractionSystemBase {
+}
