@@ -7,7 +7,8 @@ interface InteractionMode{
 
 interface InteractionContext<C: InteractionMode>{
     val mode: C
-    val target: Entity
+    val source : Entity
+    val target: Entity?
 }
 
 interface Capability<C: InteractionMode>{
@@ -31,9 +32,8 @@ sealed interface Interaction<out C : InteractionMode>{
     ) : Interaction<C>
 }
 
-class InteractionCommand<C: InteractionMode>(val interaction: Interaction.Possible<C>){
-    fun execute(){
-    }
+interface InteractionCommand<C: InteractionMode>{
+    fun execute(context: InteractionContext<C>)
 }
 
 interface InteractionFailure
@@ -50,8 +50,4 @@ data class PotentialInteractions(
     fun getActionsForMode(mode: InteractionMode): List<Interaction<out InteractionMode>> {
         return actionsByMode[mode] ?: emptyList()
     }
-}
-
-private object CX{
-    val x =InteractionHandlers
 }

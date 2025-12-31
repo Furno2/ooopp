@@ -1,14 +1,11 @@
 package new
 
-import org.example.Entity
+data class Position(var x:Int, var y:Int) {
 
-data class Position(
-    var x:Int,
-    var y:Int
-) {
     operator fun plus(rhs: Position): Position {
         return Position(x +rhs.x,y+rhs.y)
     }
+
     override fun toString(): String {
         return "Position(x=$x, y=$x)"
     }
@@ -43,13 +40,12 @@ class Grid(private val height: Int, private val width: Int) : IGrid {
         require(getTileType(position) == Tile.Floor) {"position is not floor"}
         require(getEntity(position) == null || entity == null) {"position is occupied"}
         grid[position.y][position.x] = entity
-        entity?.pos = position
         return Throwable()
     }
 
 
     override fun moveEntity(entity: Entity, newPosition: Position){
-        val oldPosition = entity.pos
+        val oldPosition = entity.getPosition()
         setEntity(entity, newPosition)
         setEntity(null, oldPosition)
     }
