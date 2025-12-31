@@ -9,9 +9,7 @@ target/
 .idea/jarRepositories.xml
 .idea/compiler.xml
 .idea/libraries/
-<<<<<<< HEAD
 .idea/
->>>>>>> feeb26e665634e5211b0a245046d8c39c5499a7d
 *.iws
 *.iml
 *.ipr
