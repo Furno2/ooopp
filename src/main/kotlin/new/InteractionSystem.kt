@@ -1,51 +1,57 @@
 package new
 
-interface InteractionMode
 
-interface Capability<C: InteractionMode> : CapabilityBase{
-    override val mode: C
-    override val sourceItem: Any?
-    fun validate(context: InteractionContext<C>): ValidInteraction<C>?
-    fun createCommand(): InteractionCommand<out C>
+interface InteractionMode{
+    fun <C: InteractionMode> handleIncoming(interaction: Interaction.Possible<C>)
 }
 
-interface InteractionContext<C: InteractionMode> : InteractionContextBase
+interface InteractionContext<C: InteractionMode>{
+    val mode: C
+    val target: Entity
+}
 
-sealed interface ValidInteraction<out C : InteractionMode> : ValidInteractionBase {
-    val capability: Capability<out C>
+interface Capability<C: InteractionMode>{
+    val mode: C
+    val source: Any?
+    fun createContext(source: Entity, target: Entity, grid: IGrid): InteractionContext<C>
+    fun validate(context: InteractionContext<C>): Interaction<C>
+}
+
+sealed interface Interaction<out C : InteractionMode>{
     val context: InteractionContext<out C>
-    data class PossibleInteraction<out C : InteractionMode>(
-        override val capability: Capability<out C>,
-        val target: Entity,
-        override val context: InteractionContext<out C>)
-        : ValidInteraction<C>
 
-    data class ImpossibleInteraction<out C : InteractionMode> (
-        override val capability: Capability<out C>,
-        val target: Entity,
+    data class Possible<out C : InteractionMode>(
+        override val context: InteractionContext<out C>,
+        val createCommand: () -> InteractionCommand<out C>
+        ) : Interaction<C>
+
+    data class Impossible<out C : InteractionMode> (
         override val context: InteractionContext<out C>,
         val reason: InteractionFailure
-    ) : ValidInteraction<C>
+    ) : Interaction<C>
 }
 
-interface InteractionCommand<C: InteractionMode>{
-    fun execute(context: ValidInteraction.PossibleInteraction<C>)
+class InteractionCommand<C: InteractionMode>(val interaction: Interaction.Possible<C>){
+    fun execute(){
+    }
 }
 
 interface InteractionFailure
 
-
-
 data class PotentialInteractions(
-    val actionsByMode: MutableMap<InteractionMode, List<ValidInteraction<out InteractionMode>>> = mutableMapOf()
+    val actionsByMode: MutableMap<InteractionMode, List<Interaction<out InteractionMode>>> = mutableMapOf()
 )
 {
-    fun addAction(action: ValidInteraction<out InteractionMode>) {
-    actionsByMode[action.capability.mode] =
-        actionsByMode.getOrDefault(action.capability.mode, emptyList()) + action
+    fun addAction(action: Interaction<out InteractionMode>) {
+    actionsByMode[action.context.mode] =
+        actionsByMode.getOrDefault(action.context.mode, emptyList()) + action
 }
 
-    fun getActionsForMode(mode: InteractionMode): List<ValidInteraction<out InteractionMode>> {
+    fun getActionsForMode(mode: InteractionMode): List<Interaction<out InteractionMode>> {
         return actionsByMode[mode] ?: emptyList()
     }
+}
+
+private object CX{
+    val x =InteractionHandlers
 }

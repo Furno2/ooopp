@@ -14,7 +14,7 @@ data class Position(
     }
 }
 
-interface Grid2{
+interface IGrid{
     fun setEntity(entity: Entity?, position: Position) : Throwable//throws Exception
     fun getEntity(position: Position): Entity?
     fun moveEntity(entity: Entity, newPosition: Position)
@@ -22,7 +22,7 @@ interface Grid2{
     //fun setTileMap()
 }
 
-class Grid(private val height: Int, private val width: Int) : Grid2 {
+class Grid(private val height: Int, private val width: Int) : IGrid {
     private var tileGrid = Array(height) { Array(width){ Tile.Floor } }
     private var grid: Array<Array<Entity?>> = Array(height){Array(width){ null } }
 
