@@ -76,6 +76,7 @@ class Grid2Test {
         val entity = EmptyEntity(Position(1,0),grid)
         grid.setEntity(entity, Position(1, 0))
         grid.moveEntity(entity, Position(1, 1))
+        assertEquals(entity, grid.getEntity(Position(1, 1))!!)
     }
     @Test()
     fun `moveEntity on non empty Tile`(){

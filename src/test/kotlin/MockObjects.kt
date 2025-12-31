@@ -11,5 +11,8 @@ class EmptyEntity(override var position: Position, override val grid: IGrid): En
     override var capabilities: List<Capability<out InteractionMode>> = emptyList()
     override val interactionHooks: Map<InteractionMode, (Interaction.Possible<*>) -> Unit> = emptyMap()
     override val interactionModes: List<InteractionMode> = emptyList()
+    override var char: Char
+        get() = TODO("Not yet implemented")
+        set(value) {}
 
 }

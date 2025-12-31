@@ -7,7 +7,7 @@ data class Position(var x:Int, var y:Int) {
     }
 
     override fun toString(): String {
-        return "Position(x=$x, y=$x)"
+        return "Position(x=$x, y=$y)"
     }
 }
 
@@ -16,6 +16,7 @@ interface IGrid{
     fun getEntity(position: Position): Entity?
     fun moveEntity(entity: Entity, newPosition: Position)
     fun getTileType(position: Position): Tile
+    fun canEnter(position: Position): Boolean
     //fun setTileMap()
 }
 
@@ -50,19 +51,41 @@ class Grid(private val height: Int, private val width: Int) : IGrid {
         setEntity(null, oldPosition)
     }
 
+    override fun canEnter(position: Position): Boolean{
+        return getTileType(position) == Tile.Floor && getEntity(position) == null
+
+    }
+
     fun printGrid(){
         println("   " + grid.indices.joinToString(" ") { "%2d".format(it) })
         for (i in grid.indices) {
             print("%2d ".format(i))
             for (j in grid.indices) {
-                print("%2s ".format(grid[i][j].toString()))
+                print("%2s ".format((grid[i][j] ?: tileGrid[i][j]).toString()))
             }
             println()
+        }
+    }
+    fun setTileGrid(tileGridInput: Array<Array<Tile>>){
+        for (i in tileGrid.indices) {
+            for (j in tileGrid[i].indices) {
+               tileGrid[i][j] = tileGridInput[i][j]
+            }
         }
     }
 
 }
 
 enum class Tile{
-    Floor, Wall
+    Floor{
+        override fun toString(): String = "."
+    }, Wall{
+        override fun toString(): String = "#"
+    };
+    fun char(): String {
+        return when(this){
+            Tile.Floor-> "."
+            Tile.Wall-> "#"
+        }
+    }
 }

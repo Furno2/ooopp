@@ -1,39 +1,34 @@
 package new
 
 
-interface InteractionMode{
-    fun <C: InteractionMode> handleIncoming(interaction: Interaction.Possible<C>)
-}
+interface InteractionMode
+//{
+    //fun <C: InteractionMode> handleIncoming(interaction: Interaction.Possible<C>)
+//}
 
 interface InteractionContext<C: InteractionMode>{
     val mode: C
     val source : Entity
-    val target: Entity?
+    val target: Entity
 }
 
-interface Capability<C: InteractionMode>{
+interface Capability<out C: InteractionMode>{
     val mode: C
     val source: Any?
-    fun createContext(source: Entity, target: Entity, grid: IGrid): InteractionContext<C>
-    fun validate(context: InteractionContext<C>): Interaction<C>
+    fun validate(context: InteractionContext<in C>): Interaction<C>
 }
 
 sealed interface Interaction<out C : InteractionMode>{
     val context: InteractionContext<out C>
 
     data class Possible<out C : InteractionMode>(
-        override val context: InteractionContext<out C>,
-        val createCommand: () -> InteractionCommand<out C>
+        override val context: InteractionContext<out C>
         ) : Interaction<C>
 
     data class Impossible<out C : InteractionMode> (
         override val context: InteractionContext<out C>,
         val reason: InteractionFailure
     ) : Interaction<C>
-}
-
-interface InteractionCommand<C: InteractionMode>{
-    fun execute(context: InteractionContext<C>)
 }
 
 interface InteractionFailure

@@ -5,7 +5,6 @@ import new.Interaction
 import new.Capability
 import new.IGrid
 import new.InteractionContext
-import new.InteractionCommand
 import new.Entity
 import new.Tile
 import new.Position
@@ -16,25 +15,15 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
 // Simple dummy implementations for testing
-object TestMode1 : InteractionMode {
-    override fun <C : InteractionMode> handleIncoming(interaction: Interaction.Possible<C>) {}
-}
+object TestMode1 : InteractionMode
 
-object TestMode2 : InteractionMode {
-    override fun <C : InteractionMode> handleIncoming(interaction: Interaction.Possible<C>) {}
-}
-
-class TestCommand(): InteractionCommand<TestMode1>{
-    override fun execute(context: InteractionContext<TestMode1>) {
-
-    }
-}
+object TestMode2 : InteractionMode
 
 class TestCapability : Capability<TestMode1> {
     override val mode = TestMode1
     override val source: Any? = null
 
-    override fun createContext(source: Entity, target: Entity, grid: IGrid): InteractionContext<TestMode1> {
+    override fun createContext(source: Entity, target: Entity, grid: IGrid, other: Any): InteractionContext<TestMode1> {
         return object : InteractionContext<TestMode1> {
             override val mode = this@TestCapability.mode
             override val source = source
@@ -43,7 +32,7 @@ class TestCapability : Capability<TestMode1> {
     }
 
     override fun validate(context: InteractionContext<TestMode1>): Interaction<TestMode1> {
-        return Interaction.Possible(context, {TestCommand()})
+        return Interaction.Possible(context)
     }
 }
 
@@ -63,6 +52,10 @@ class Grid : IGrid{
     override fun setEntity(entity: Entity?, position: new.Position): Throwable {
         TODO("Not yet implemented")
     }
+
+    override fun canEnter(position: Position): Boolean {
+        TODO("Not yet implemented")
+    }
 }
 data class Position(val x: Int, val y: Int)
 
@@ -77,6 +70,8 @@ class TestEntity(
     init{
         validateHooks()
     }
+
+    override var char: Char = ' '
 }
 
 class EntityTest {
