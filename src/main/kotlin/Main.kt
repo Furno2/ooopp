@@ -1,16 +1,24 @@
 package org.example
-
-//TIP To <b>Run</b> code, press <shortcut actionId="Run"/> or
-// click the <icon src="AllIcons.Actions.Execute"/> icon in the gutter.
+import java.util.Scanner
+//import kotlin.io.core
 fun main() {
-    val name = "Kotlin"
-    //TIP Press <shortcut actionId="ShowIntentionActions"/> with your caret at the highlighted text
-    // to see how IntelliJ IDEA suggests fixing it.
-    println("Hello, " + name + "!")
+    var a:Int=10
+    val input = Input()
+    val scanner = Scanner(System.`in`)
+    val size = 5
+    print(2*a)
+    val tileArrayInner = Array(size){ row ->
+        Array(size){ col ->
+            if(row == 0 || row == size - 1 ||  col == 0 || col == size - 1) TileSimple.Wall else TileSimple.Floor}}
+    val tileArray = TileGrid(size,size).apply{this.fromSimple(tileArrayInner)}
+    //tileArray.fromSimple(tileArrayInner)
+    var world = World(tileArray)
+    world.addEntity(Player(2, 2, world))
 
-    for (i in 1..5) {
-        //TIP Press <shortcut actionId="Debug"/> to start debugging your code. We have set one <icon src="AllIcons.Debugger.Db_set_breakpoint"/> breakpoint
-        // for you, but you can always add more by pressing <shortcut actionId="ToggleLineBreakpoint"/>.
-        println("i = $i")
+    world.addEntity(Door(3,3,world))
+
+    world.printGrid()
+    while (true) {
+        if (gameLoop(scanner, input, world)) break
     }
 }
