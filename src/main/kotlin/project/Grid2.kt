@@ -1,6 +1,8 @@
-package new
+package project
 
-data class Position(var x:Int, var y:Int) {
+import kotlin.math.abs
+
+data class Position(val x:Int,val y:Int) {
 
     operator fun plus(rhs: Position): Position {
         return Position(x +rhs.x,y+rhs.y)
@@ -9,12 +11,16 @@ data class Position(var x:Int, var y:Int) {
     override fun toString(): String {
         return "Position(x=$x, y=$y)"
     }
+
+    fun isAdjacent(other: Position): Boolean {
+        return (x == other.x && abs(y - other.y) == 1) || (y == other.y && abs(x - other.x) == 1)
+    }
 }
 
 interface IGrid{
-    fun setEntity(entity: Entity?, position: Position) : Throwable//throws Exception
+    fun setEntity(entity: Entity?, position: Position)  //throws Exception
     fun getEntity(position: Position): Entity?
-    fun moveEntity(entity: Entity, newPosition: Position)
+    fun moveEntity(entity: Entity, oldPosition: Position, newPosition: Position)
     fun getTileType(position: Position): Tile
     fun canEnter(position: Position): Boolean
     //fun setTileMap()
@@ -36,17 +42,16 @@ class Grid(private val height: Int, private val width: Int) : IGrid {
         return if(inBounds(position)){grid[position.y][position.x]} else null
     }
 
-    override fun setEntity(entity: Entity?, position: Position) : Throwable{
+    override fun setEntity(entity: Entity?, position: Position)  {
         //require(inBounds(position)) {"position out of bounds"}
         require(getTileType(position) == Tile.Floor) {"position is not floor"}
         require(getEntity(position) == null || entity == null) {"position is occupied"}
         grid[position.y][position.x] = entity
-        return Throwable()
     }
 
 
-    override fun moveEntity(entity: Entity, newPosition: Position){
-        val oldPosition = entity.getPosition()
+    override fun moveEntity(entity: Entity,oldPosition: Position, newPosition: Position){
+        require(getEntity(oldPosition) == entity) {"entity not at its recorded position"}
         setEntity(entity, newPosition)
         setEntity(null, oldPosition)
     }
@@ -82,10 +87,4 @@ enum class Tile{
     }, Wall{
         override fun toString(): String = "#"
     };
-    fun char(): String {
-        return when(this){
-            Tile.Floor-> "."
-            Tile.Wall-> "#"
-        }
-    }
 }

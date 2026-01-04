@@ -1,14 +1,14 @@
-package test
+package test.units
 
-import new.Entity
-import new.Grid
-import new.Position
-import new.Tile
+import project.Entity
+import project.Grid
+import project.Position
+import project.Tile
 import org.junit.jupiter.api.assertThrows
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-class Grid2Test {
+class GridTest {
     @Test
     fun `successful setEntity`(){
         val grid = Grid(2, 2)
