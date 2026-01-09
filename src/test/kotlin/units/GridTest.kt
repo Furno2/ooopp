@@ -12,14 +12,14 @@ class GridTest {
     @Test
     fun `successful setEntity`(){
         val grid = Grid(2, 2)
-        val entity = EmptyEntity(Position(1,1),grid)
+        val entity = TestEntity(grid,position = Position(1,1))
         grid.setEntity(entity, Position(1, 1))
     }
     @Test()
     fun `multiple setEntity on same Position`(){
         assertThrows<IllegalArgumentException> {
             val grid = Grid(2, 2)
-            val entity = EmptyEntity(Position(1,1),grid)
+            val entity = TestEntity(grid,position = Position(1,1))
             grid.setEntity(entity, Position(1, 1))
             grid.setEntity(entity, Position(1, 1))
         }
@@ -27,18 +27,18 @@ class GridTest {
     @Test()
     fun `different entities multiple setEntity on different Positions`(){
         val grid = Grid(2, 2)
-        val entity = EmptyEntity(Position(1,1),grid)
+        val entity = TestEntity(grid,position = Position(1,1))
         grid.setEntity(entity, Position(1, 1))
-        val entity2 = EmptyEntity(Position(1,0),grid)
+        val entity2 = TestEntity(grid,position = Position(1,0))
         grid.setEntity(entity2, Position(1, 0))
     }
     @Test()
     fun `different entities multiple setEntity on same Positions`(){
         assertThrows<IllegalArgumentException> {
             val grid = Grid(2, 2)
-            val entity = EmptyEntity(position = Position(1,1),grid)
+            val entity = TestEntity(grid,position = Position(1,1))
             grid.setEntity(entity, Position(1, 1))
-            val entity2 = EmptyEntity(position = Position(1,1),grid)
+            val entity2 = TestEntity(grid,position = Position(1,1))
             grid.setEntity(entity2, Position(1, 1))
         }
     }
@@ -46,7 +46,7 @@ class GridTest {
     fun `setEntity out of bounds`(){
         assertThrows<IllegalArgumentException> {
             val grid = Grid(2, 2)
-            val entity = EmptyEntity(position = Position(1,2),grid)
+            val entity = TestEntity(grid,position = Position(1,2))
             grid.setEntity(entity, Position(1, 2))
         }
     }
@@ -59,7 +59,7 @@ class GridTest {
     @Test()
     fun `getEntity on Entity`(){
         val grid = Grid(2, 2)
-        val entity = EmptyEntity(position = Position(1,1),grid)
+        val entity = TestEntity(grid,position = Position(1,1))
         grid.setEntity(entity, Position(1, 1))
         val entity2: Entity? = grid.getEntity(Position(1, 1))
         assertEquals(entity, entity2)
@@ -73,38 +73,38 @@ class GridTest {
     @Test()
     fun `moveEntity on empty Tile`(){
         val grid = Grid(2, 2)
-        val entity = EmptyEntity(Position(1,0),grid)
+        val entity = TestEntity(grid,position = Position(1,0))
         grid.setEntity(entity, Position(1, 0))
-        grid.moveEntity(entity, Position(1, 1))
+        grid.moveEntity(entity, entity.getPosition(),Position(1, 1))
         assertEquals(entity, grid.getEntity(Position(1, 1))!!)
     }
     @Test()
     fun `moveEntity on non empty Tile`(){
         assertThrows<IllegalArgumentException> {
             val grid = Grid(2, 2)
-            val entity = EmptyEntity(Position(1,0),grid)
-            val entity2 = EmptyEntity(Position(1,1),grid)
+            val entity = TestEntity(grid,position = Position(1,0))
+            val entity2 = TestEntity(grid,position = Position(1,1))
             grid.setEntity(entity, Position(1, 0))
             grid.setEntity(entity2, Position(1, 1))
-            grid.moveEntity(entity, Position(1, 1))
+            grid.moveEntity(entity,entity.getPosition(),Position(1, 1))
         }
     }
     @Test()
     fun `moveEntity on initial Tile`(){
         assertThrows<IllegalArgumentException> {
             val grid = Grid(2, 2)
-            val entity = EmptyEntity(Position(1,0),grid)
+            val entity = TestEntity(grid,position = Position(1,0))
             grid.setEntity(entity, Position(1, 0))
-            grid.moveEntity(entity, Position(1, 0))
+            grid.moveEntity(entity,entity.getPosition(), Position(1, 0))
         }
     }
     @Test()
     fun `moveEntity out of bounds`(){
         assertThrows<IllegalArgumentException> {
             val grid = Grid(2, 2)
-            val entity = EmptyEntity(Position(1,0),grid)
+            val entity = TestEntity(grid,position = Position(1,0))
             grid.setEntity(entity, Position(1, 0))
-            grid.moveEntity(entity, Position(2, 0))
+            grid.moveEntity(entity,entity.getPosition(), Position(2, 0))
         }
     }
     @Test()

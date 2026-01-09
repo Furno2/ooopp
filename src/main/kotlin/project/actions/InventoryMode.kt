@@ -3,41 +3,36 @@ package project.actions
 import project.Actor
 import project.Entity
 import project.IInventory
+import project.InteractionHandler
 import project.Item
 
+object InventoryMode : ActionMode
 
-// 1. Action Mode
-//data class OpenInventory(val whoCanOpen: Boolean) : ActionMode
-object Inventory : ActionMode
+object ItemNotPresentInContainer : ActionFailure
 
-// 2. Failure Reasons
-    object TooFar : ActionFailure
-    object Locked : ActionFailure
-    object ItemNotPresentInContainer : ActionFailure
-
-// 3. Context
-class InventoryContext(
+data class InventoryContext(
     override val source: Actor,
     override val target: Entity,
+    override val item: Item,
     val action: InventoryOperationType,
-    override val sourceItem: Item,
 ) : ActionContext {
-    override val mode = Inventory
+    override val mode = InventoryMode
+    override var capability: Capability? = null
 }
 
-// 4. Capability (What the Player/Actor has)
-class InventoryCapability(override val targetType: TargetType) : Capability {
-    private val _mode: ActionMode = Inventory
-    override val mode: ActionMode get() = _mode
+data class InventoryCapability(
+    override val interactionHandler: InteractionHandler? = null
+) : Capability {
+    override val targetType = TargetType.OTHER
+    override val mode = InventoryMode
     override val sourceItem = null
+    override val targetSelector: TargetSelector = SelfTargetSelector()
     override fun validateOutside(context: ActionContext): ActionFailure? {
         with(context as InventoryContext) {
             val srcPos = source.getPosition()
             val tgtPos = target.getPosition()
 
-
-            // Realism check: Must be adjacent to open inventory
-            return if (srcPos.isAdjacent(tgtPos) || srcPos == tgtPos ) {
+            return if (source == target || srcPos.isAdjacent(tgtPos)) {
                 null
             } else {
                 TooFar

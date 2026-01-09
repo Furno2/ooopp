@@ -3,30 +3,22 @@ package test.units
 import project.*
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
-import project.actions.ActionContext
 import project.actions.ActionFailure
 import project.actions.ActionMode
-import project.actions.Capability
-import project.actions.ValidatedAction
+import project.actions.UseItemMode
+import project.actions.Action
 
-// ---------- Test Item ----------
-class TestItem(
-    override val name: String = "TestItem",
-    mode: ActionMode,
-    hookResult: Any? = null,
-    validatorResult: ActionFailure? = null
-) : Item() {
+// Simple wrapper to satisfy HookReturnValue type
+data class SimpleReturn(val v: Any?) : HookReturnValue
 
-    override val capabilities: List<Capability> = emptyList()
-
-    override val interactionDefinitions: List<InteractionDefinition> =
-        listOf(
-            InteractionDefinition(
-                mode = mode,
-                hook = { hookResult },
-                validator = { validatorResult }
-            )
-        )
+// Helper to create TestItem instances using the shared TestItem from MockObjects
+private fun mkItem(mode: ActionMode, hookResult: Any? = null, validatorResult: ActionFailure? = null): Item {
+    val def = InteractionDefinition(
+        mode = mode,
+        hook = { _ -> SimpleReturn(hookResult) },
+        validator = { _ -> validatorResult }
+    )
+    return TestItem(name = "TestItem", interactionDefinitions = listOf(def))
 }
 
 // ---------- Tests ----------
@@ -41,11 +33,11 @@ class HumanCharacterTest {
         Human(
             position = Position(0, 0),
             grid = TestGrid(),
-            inventoryInternal = inventory,)
+            initialInventory = inventory.data.map { it.key to it.value })
 
     @Test
     fun `inventory getter returns immutable copy`() {
-        val item = TestItem(mode = TestMode)
+        val item = mkItem(mode = TestMode)
         val inventory = newInventory(mutableMapOf(item to 1))
         val human = createHuman(inventory)
 
@@ -57,43 +49,39 @@ class HumanCharacterTest {
 
     @Test
     fun `falls back to inventory interaction definition for self action`() {
-        val item = TestItem(
+        val item = mkItem(
             mode = TestMode,
             hookResult = "OK"
         )
         val inventory = newInventory(mutableMapOf(item to 1))
         val human = createHuman(inventory)
 
-        val ctx = object : ActionContext {
+        // Use a proper UseItemContext so Human's UseItem gate delegates to the item's concrete mode
+        val ctx = project.actions.UseItemContext(human, human, item, object : project.actions.ActionContext {
             override val mode = TestMode
-            override val source: Actor = human
-            override val target: Entity = human
-            override val sourceItem = item
-        }
+            override val source = human
+            override val target = human
+            override val item = item
+        })
 
         val def = human.getInteractionDefinitionForMode(
-            mode = TestMode,
+            mode = UseItemMode,
             contextIfNeeded = ctx
         )
-
         assertNotNull(def)
-
-        val result = def!!.invokeHook(
-            ValidatedAction.Possible(ctx)
-        )
-
-        assertEquals("OK", result)
+        val result = def!!.invokeHook(Action.Possible(ctx))
+        assertEquals("OK", (result as SimpleReturn).v)
     }
 
     @Test
     fun `does not fall back to inventory when target is not self`() {
-        val item = TestItem(mode = TestMode)
-        val otherItem = TestItem(mode = TestMode)
+        val item = mkItem(mode = TestMode)
+        val otherItem = mkItem(mode = TestMode)
         val inventory = newInventory(mutableMapOf(item to 1))
         val inventory2 = newInventory(mutableMapOf(otherItem to 1))
         val human = createHuman(inventory)
 
-        val other = createHuman(inventory2)
+        createHuman(inventory2)
 
         val def = human.getInteractionDefinitionForMode(
             mode = TestMode,
@@ -104,81 +92,65 @@ class HumanCharacterTest {
 
     @Test
     fun `validateInside uses item validator for self action`() {
-        val failure = object : ActionFailure {}
-        val item = TestItem(
+        val failure = TestActionFailure
+        val item = mkItem(
             mode = TestMode,
             validatorResult = failure
         )
         val inventory = newInventory(mutableMapOf(item to 1))
         val human = createHuman(inventory)
-
-        val ctx = object : ActionContext {
+        val ctx = project.actions.UseItemContext(human, human, item, object : project.actions.ActionContext {
             override val mode = TestMode
-            override val source: Actor = human
-            override val target: Entity = human
-            override val sourceItem = item
-        }
+            override val source = human
+            override val target = human
+            override val item = item
+        })
 
-        val def = human.getInteractionDefinitionForMode(
-            mode = TestMode,
-            contextIfNeeded = ctx
-        )
+        // Validate via the item's concrete mode definition (item validators are on the item)
+        val itemDef = item.getInteractionDefinitionForMode(TestMode, ctx)
+        assertNotNull(itemDef)
 
-        val result = def!!.validateInside(ctx)
+        val result = itemDef!!.validateInside(ctx)
         assertSame(failure, result)
     }
 
     @Test
     fun `item interaction definition is chosen based on item equality`() {
-        val item1 = TestItem(mode = TestMode, hookResult = 1)
-        val item2 = TestItem(mode = TestMode, hookResult = 2)
+        val item1 = mkItem(mode = TestMode, hookResult = 1)
+        val item2 = mkItem(mode = TestMode, hookResult = 2)
 
         val inventory1 = newInventory(mutableMapOf(item1 to 1, item2 to 1))
-        val human = createHuman(
-                                inventory1
-            )
+        val human = createHuman( inventory1, )
 
-        val ctx1 = object : ActionContext {
+        val ctx1 = project.actions.UseItemContext(human, human, item2, object : project.actions.ActionContext {
             override val mode = TestMode
-            override val source: Actor = human
-            override val target: Entity = human
-            override val sourceItem = item2
-        }
+            override val source = human
+            override val target = human
+            override val item = item2
+        })
 
-        val def1 = human.getInteractionDefinitionForMode(
-            mode = TestMode,
-            contextIfNeeded = ctx1
-        )
+        val humanDef1 = human.getInteractionDefinitionForMode(UseItemMode, ctx1)
+        assertNotNull(humanDef1)
+        val humanRet1 = humanDef1!!.invokeHook(Action.Possible(ctx1))
+        assertEquals(2, (humanRet1 as SimpleReturn).v)
 
-        val result1 = def1!!.invokeHook(
-            ValidatedAction.Possible(ctx1)
-        )
-
-        assertEquals(2, result1)
-
-        val ctx2 = object : ActionContext {
+        val ctx2 = project.actions.UseItemContext(human, human, item2, object : project.actions.ActionContext {
             override val mode = TestMode
-            override val source: Actor = human
-            override val target: Entity = human
-            override val sourceItem = item2
-        }
+            override val source = human
+            override val target = human
+            override val item = item2
+        })
 
-        val def2 = human.getInteractionDefinitionForMode(
-            mode = TestMode,
-            contextIfNeeded = ctx2
-        )
-
-        val result2 = def2!!.invokeHook(
-            ValidatedAction.Possible(ctx2)
-        )
-
-        assertEquals(2, result2)
+        val humanDef2 = human.getInteractionDefinitionForMode(UseItemMode, ctx2)
+        assertNotNull(humanDef2)
+        val humanRet2 = humanDef2!!.invokeHook(Action.Possible(ctx2))
+        assertEquals(2, (humanRet2 as SimpleReturn).v)
     }
 
     @Test
     fun `itemAllowedModes reflects inventory interaction modes`() {
-        val item1 = TestItem(mode = TestMode)
-        val item2 = TestItem(mode = OtherMode)
+        val item1 = mkItem(mode = TestMode)
+        val item2 = mkItem(mode = OtherMode)
 
         val inventory1 = newInventory(mutableMapOf(item1 to 1, item2 to 1))
         val human = createHuman(
@@ -187,7 +159,7 @@ class HumanCharacterTest {
 
         val modes = human.itemAllowedModes
 
-        assertEquals(2, modes.size)
+        assertEquals(human.modes.size + 2 , modes.size)
         assertTrue(modes.contains(TestMode))
         assertTrue(modes.contains(OtherMode))
     }

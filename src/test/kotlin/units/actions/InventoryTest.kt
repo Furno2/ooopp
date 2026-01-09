@@ -3,18 +3,9 @@ package test.units.actions
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.*
 import project.*
-import project.actions.ActionContext
-import project.actions.ActionMode
-import project.actions.Capability
-import test.units.TestGrid
+import test.units.*
 
 class InventoryContainerTest {
-
-    // Minimal Item implementation for testing
-    class TestItem(override val name: String) : Item() {
-        override val capabilities: List<Capability> = emptyList()
-        override val interactionDefinitions: List<InteractionDefinition> = emptyList()
-    }
 
     @Test
     fun `adding items increases count`() {
@@ -63,60 +54,33 @@ class InventoryContainerTest {
 
     @Test
     fun `modes getter returns interaction modes`() {
-        val mode1 = object : ActionMode {}
-        val mode2 = object : ActionMode {}
-
-        val item = object : Item() {
-            override val name: String = "TestItem"
-            override val capabilities: List<Capability> = emptyList()
-            override val interactionDefinitions: List<InteractionDefinition> = listOf(
-                InteractionDefinition(mode = mode1, hook = {}, validator = { null }),
-                InteractionDefinition(mode = mode2, hook = {}, validator = { null })
-            )
-        }
+        val item = TestItem(name = "TestItem", interactionDefinitions = listOf(
+            InteractionDefinition(mode = TestMode, hook = {null}, validator = { null }),
+            InteractionDefinition(mode = OtherMode, hook = {null}, validator = { null })
+        ))
 
         val modes = item.modes
-        assertTrue(modes.contains(mode1))
-        assertTrue(modes.contains(mode2))
+        assertTrue(modes.contains(TestMode))
+        assertTrue(modes.contains(OtherMode))
     }
 
     @Test
     fun `getInteractionDefinitionForMode returns definition only if sourceItem matches`() {
-        val mode1 = object : ActionMode {}
+        val item = TestItem(name = "TestItem", interactionDefinitions = listOf(
+            InteractionDefinition(mode = TestMode, hook = {null}, validator = { null })
+        ))
 
-        val item = object : Item() {
-            override val name: String = "TestItem"
-            override val capabilities: List<Capability> = emptyList()
-            override val interactionDefinitions: List<InteractionDefinition> = listOf(
-                InteractionDefinition(mode = mode1, hook = {}, validator = { null })
-            )
-        }
-
-        val actor = object : Actor() {
-            override var char: Char = '@'
-            override val grid = TestGrid()
-            override var position: Position = Position(0,0)
-            override val interactionDefinitions: List<InteractionDefinition> = emptyList()
-            override val capabilitiesInternal: List<Capability> = emptyList()
-        }
+        val actor = TestActor(grid = TestGrid(), position = Position(0,0))
 
         // Provide a context with sourceItem matching
-        val matchingContext = object : ActionContext {
-            override val mode: ActionMode = mode1
-            override val source = actor
-            override val target: Entity = actor
-            override val sourceItem: Item? = item
-        }
+        val matchingContext = TestActionContext(TestMode, actor, actor, item)
 
-        val def = item.getInteractionDefinitionForMode(mode1, matchingContext)
+        val def = item.getInteractionDefinitionForMode(TestMode, matchingContext)
         assertNotNull(def)
 
         // Provide context with non-matching sourceItem
-        val nonMatchingContext = object : ActionContext by matchingContext {
-            override val sourceItem: Item? = null
-        }
-
-        val def2 = item.getInteractionDefinitionForMode(mode1, nonMatchingContext)
+        val nonMatchingContext = TestActionContext(TestMode, actor, actor, null)
+        val def2 = item.getInteractionDefinitionForMode(TestMode, nonMatchingContext)
         assertNull(def2)
     }
 }

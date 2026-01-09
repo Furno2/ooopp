@@ -1,0 +1,101 @@
+Project Architecture Assessment
+==============================
+
+1. OOPness
+----------
+Strengths:
+- Uses interfaces (Controller, AiController, InteractionDefinitionProvider, IGrid) and abstract classes (Entity) for polymorphism and encapsulation.
+- Data classes (Position, InteractionDefinition) improve immutability and clarity.
+- Enums/sealed classes for action types (ActionMode, TargetType) provide type safety.
+
+Weaknesses:
+- Mutable public/protected fields (e.g., Entity.position, Entity.char) reduce encapsulation.
+- Some classes (Grid) expose internal arrays directly.
+- Direct instantiation of dependencies reduces flexibility for testing/extension.
+
+Suggestions:
+- Refactor mutable fields to private, provide controlled accessors/mutators.
+- Use dependency injection for controllers/capabilities.
+- Consider sealed classes for all action types for exhaustive handling.
+
+2. Extensibility
+----------------
+Strengths:
+- Interfaces and abstract classes allow easy extension of entities, controllers, capabilities.
+- Action system is modular, with capabilities and interaction definitions separated from entities.
+
+Weaknesses:
+- Some logic is hardcoded (e.g., helper functions in MainKinda.kt access capability lists by index).
+- Adding new action modes/capabilities may require changes in multiple places.
+
+Suggestions:
+- Use registry/factory pattern for capabilities/action modes.
+- Refactor helpers to use capability type checks, not list indices.
+- Consider event-driven/observer patterns for entity interactions.
+
+3. Readability
+--------------
+Strengths:
+- Well-structured code, clear separation of concerns (grid, entity, action system).
+- Data classes/enums improve clarity.
+- Some files (Controller.kt) have good documentation/comments.
+
+Weaknesses:
+- Some files lack KDoc/comments on public APIs (Entity.kt, Grid2.kt).
+- Large lambdas/inline logic (hooks/validators in InteractionDefinition) reduce clarity.
+- Helper functions in MainKinda.kt are procedural and could be refactored.
+
+Suggestions:
+- Add KDoc to all public classes/interfaces/methods.
+- Refactor complex lambdas to named functions.
+- Split large files into smaller, focused modules if possible.
+
+4. Ease of Adding User Input (Zircon)
+-------------------------------------
+Current State:
+- Controllers (HumanController, FirstPossibleController) decide actions, but no direct Zircon input integration.
+- Input handling would require injecting a Zircon-based controller/input handler into the main loop.
+
+Suggestions:
+- Create ZirconInputController implementing Controller, translating Zircon input events into actions.
+- Refactor main loop for controller injection/runtime switching.
+- Decouple input polling from game logic for testability.
+
+5. Ease of Adding Output (Zircon)
+---------------------------------
+Current State:
+- Entities/grid have toString()/print methods, but no direct Zircon rendering.
+- Output logic is procedural (grid.printGrid()).
+
+Suggestions:
+- Implement rendering interfaces for entities/grid using Zircon API.
+- Separate model/view logic: entities provide render data, renderer handles Zircon output.
+- Use observer pattern to trigger redraws on state changes.
+
+6. Ease of Adding a Visibility System (Entities)
+-----------------------------------------------
+Current State:
+- Entities have position/state, but no visibility property/system.
+- Grid/entity management is centralized, making visibility logic possible.
+
+Suggestions:
+- Add visible: Boolean property or canSee(other: Entity): Boolean method to entities.
+- Implement visibility manager/system updating visibility by game rules.
+- Refactor rendering logic to conditionally display entities based on visibility.
+
+File References
+---------------
+- Entity.kt: Core entity abstraction, interaction definitions, controller interfaces.
+- Controller.kt: Example controllers, stateless/stateful, clear extension points.
+- Grid2.kt: Grid/position logic, potential for visibility/rendering extension.
+- ActionSystem.kt: Action modes, capabilities, validation logic.
+- HumanController.kt: AI controller with behavior patterns, extensible for input/output.
+- MainKinda.kt: Helper functions for movement, attack, inventory; procedural logic.
+
+Actionable Summary
+------------------
+- Improve encapsulation, use dependency injection for controllers/capabilities.
+- Add documentation, refactor complex lambdas for readability.
+- Implement Zircon input/output controllers, decouple from game logic.
+- Add visibility properties/methods to entities, conditionally render based on visibility.
+

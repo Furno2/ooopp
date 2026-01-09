@@ -1,34 +1,33 @@
 package project
 
-import project.actions.ActionContext
-import project.actions.ActionMode
+import project.actions.ActionFailure
 import project.actions.AttackType
 import project.actions.Capability
+import project.actions.ReloadContext
 
-abstract class Item : InteractionDefinitionProvider{
-    abstract val name: String
-
+abstract class Item{
     abstract val capabilities: List<Capability>
-    protected abstract val interactionDefinitions: List<InteractionDefinition>
-
-    val modes: List<ActionMode> get() = interactionDefinitions.map{it.mode}.toList()
-
-    override fun getInteractionDefinitionForMode(mode: ActionMode, contextIfNeeded: ActionContext?): InteractionDefinition? {
-        return if(contextIfNeeded?.sourceItem === this) {interactionDefinitions.firstOrNull{it.mode == mode}} else null
-    }
 }
 
 abstract class Weapon: Item() {
     abstract val damage: Int
     abstract fun canAttack(attackType: AttackType): Boolean
+
+    abstract fun hasAmmo(): Boolean
+    abstract val maxAmmo: Int
+
+    abstract fun prepareReload(requested: Int): Int
+
+    abstract fun acceptReload(accepted: Int)
 }
 
-abstract class Armor : Item()
+abstract class Armor : Item() {
+    open val protection: Int = 0
+}
 
-abstract class Artefact : Item()
 
 enum class EquipmentSlot{
-    WEAPON, ARMOR, ARTEFACT
+    WEAPON, ARMOR
 }
 
 interface IInventory {
@@ -66,5 +65,5 @@ class InventoryContainer(private val _inventory: MutableMap<Item,Int>):IInventor
 
         }
     }
-    override val data: Map<Item,Int> get() = _inventory
+    override val data: Map<Item,Int> get() = _inventory.toMap()
 }

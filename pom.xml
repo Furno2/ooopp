@@ -85,11 +85,18 @@
             <version>2.2.21</version>
         </dependency>
 
-        <!--<dependency>
-             <groupId>org.hexworks.zircon</groupId>
+        <dependency>
+            <groupId>org.hexworks.zircon</groupId>
             <artifactId>zircon.core-jvm</artifactId>
             <version>2022.1.0-RELEASE</version>
-        </dependency>-->
+        </dependency>
+
+        <dependency>
+        <groupId>com.badlogicgames.gdx</groupId>
+        <artifactId>gdx-ai</artifactId>
+        <version>1.8.2</version>
+    </dependency>
+
     </dependencies>
 
 </project>

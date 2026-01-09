@@ -1,0 +1,206 @@
+Assessment: OOP, Extensibility, Readability
+
+Scope
+- Target files reviewed: src/main/kotlin/project/{Entity.kt, Controller.kt, Grid2.kt, GridPathfinder.kt, MainKinda.kt, Items.kt, actions/ActionSystem.kt}
+- Goal: assess the codebase on four aspects: oopness, extensibility, readability, and the ease of adding: (1) Zircon-based user input, (2) Zircon-based output (rendering), (3) a visibility system (conditional display of entities).
+
+Checklist
+- [x] Read key source files and summarize their structure
+- [x] Evaluate OOP design and patterns used
+- [x] Evaluate extensibility for adding features (Zircon I/O, visibility)
+- [x] Evaluate readability and maintainability
+- [x] Provide concrete recommendations and a short integration plan for each requested feature
+- [x] Save results in this file
+
+High-level summary
+- The project is a small, focused, object-oriented Kotlin codebase implementing a grid, entities (Actor/Entity), an actions/capabilities system, and a Grid A* pathfinder.
+- Design leans toward classic OOP: interfaces (IGrid, Controller, Capability), abstract base classes (Entity, Actor, Item hierarchy), and composition (capabilities and interaction definitions attached to entities/items).
+- The action system is the project's primary extensibility mechanism and is well-factored: capabilities expose discovery/validation, and InteractionDefinition objects provide per-mode hooks+validators.
+
+1) OOPness
+Strengths
+- Clear domain model: Position, Grid, Entity/Actor, Item, Capability, ActionContext, ValidatedAction — responsibilities are separated and named clearly.
+- Use of interfaces (IGrid, Controller, Capability, ActionMode) and abstract classes (Entity, Actor, Item) enables polymorphism and runtime substitution.
+- Composition over inheritance: items contribute capabilities and interactionDefinitions that extend an actor's behavior without inheriting.
+- Encapsulation: Grid methods (setEntity, moveEntity, canEnter) keep tile/entity rules centralized instead of scattering checks throughout code.
+
+Weaknesses / Opportunities
+- Some mutable state (public var position, grid passed into constructors) is used directly; tighter encapsulation (private state with explicit APIs) would improve invariants and reasonability.
+* Several classes export internal structure through mutable collections (e.g., InventoryContainer exposes data map in Actor). Consider read-only views or explicit accessors to avoid accidental mutations.
+- A few empty / placeholder files (Pathfinder.kt, FsmController.kt) exist; clarify whether GridPathfinder is the intended implementation and remove/replace unused files to reduce confusion.
+
+2) Extensibility
+Strengths
+- The Capability + ActionMode + InteractionDefinition pattern is powerful and makes adding new actions, items, and behaviors straightforward: define a new Mode/Capability and provide interactionDefinition(s).
+- Items implement their own capabilities and interaction hook/validator pairs, enabling modular features (weapons, medkits, ammo).
+- Controller abstraction allows pluggable AI or player-driven controllers.
+
+Effort to add common features
+- New items / capabilities: low effort — just add an Item subclass and capabilities + interactionDefinitions.
+- New AI controllers: low effort — implement Controller interface and hook into Actor.controller.
+- Alternate pathfinder: moderate effort — GridPathfinder is self-contained; adding another pathfinder implementation only requires a new class and wiring where needed.
+
+Risks
+* Many cross-cutting responsibilities (e.g., inventory, ammo reload) are implemented inside Human; extracting some logic into services/components would improve testability and reuse.
+* `HumanController` is tightly coupled to `Grid` and `GridPathfinder`; introducing a `Pathfinder` interface would improve flexibility and testability.
+
+3) Readability
+Strengths
+- Names are descriptive (MovementCapability, InteractionDefinition, PotentialActions), helping comprehension.
+- Files are reasonably sized and focused.
+- Use of Kotlin data classes (Position) and sealed interfaces (ValidatedAction) makes intent clearer.
+
+Improvement areas
+- Inconsistent visibility modifiers: lots of protected/override/var sprinkled; a consistent style guide would help. Prefer immutable public properties and restrict mutability.
+- Small functions and helper methods are present, but some larger lambdas (e.g., Human interaction hooks) contain multiple concerns (validation + state mutation). Consider moving logic into named private functions to improve readability and easier unit testing.
+- Missing documentation comments for public APIs (IGrid, Capability.validate) — short KDoc blocks would help future contributors.
+
+4) Adding Zircon-based input (user events) and output (rendering)
+Summary: Integration is straightforward if the codebase is treated as a model (game state + rules) and Zircon is added as a separate UI layer that observes and manipulates the model via defined APIs.
+
+Design principles
+- Keep the game model (grid, entities, actions, controllers) UI-agnostic. Create an adapter/bridge layer between Zircon and the model.
+- Introduce a GameState or World class that owns Grid and the entity list and offers stable, thread-safe APIs for queries and commands (move, attack, open inventory). The existing Grid + Entities can be used, but a small facade helps.
+- Use an event or observer pattern so the UI can subscribe to state changes (entity moved, entity added/removed, hp changed). This avoids polling and decouples rendering.
+
+Concrete integration steps (minimal plan)
+1. Create a UI package (e.g., project.ui) and add a Zircon-based renderer class: ZirconRenderer(world: World, tileMapping: Tile->TileDrawable, entityMapping: Entity->TileDrawable). The renderer observes the World and redraws when events arrive.
+2. Create an InputHandler that converts Zircon input events into calls on Controller implementations or into high-level commands on World (e.g., requestMove(actorId, targetPos) which runs validation using existing capabilities and applies hooks when valid).
+3. Create a PlayerController implementation that consumes input events (or commands from InputHandler) and returns ValidatedAction or directly invokes interaction hooks. Prefer returning actions to reuse validation paths.
+4. Minimal changes to existing code: add observer hooks to Grid (or World facade) and add an API to query entity positions and symbols (char). Avoid changing internal logic of actors/items.
+
+Estimate: A competent Kotlin dev can add a basic Zircon renderer + input loop in ~1-2 days (including wiring), less if familiar with Zircon.
+
+5) Adding a visibility system (conditional display of other entities, not tile map)
+Summary: Two main choices — per-entity vision (each actor has a Vision / FOV component) or global visibility manager (compute visible set for the player each frame). For a single-player display, computing player FOV is typical.
+
+Recommended approach (practical, low-risk)
+- Add a VisionComponent (or VisibilityComponent) as an optional property on Actor (or Entity). It holds parameters: sightRange:Int, blocksLight:Boolean? (or rely on tile transparency), and a cache of visible positions.
+- Implement a Field-of-View (FOV) algorithm (e.g., recursive shadowcasting or simple Bresenham-raycasting for prototypes). This function consumes the Grid (tile walkable/transparent) and returns a Set<Position> visible from a source.
+- World/Renderer integration: compute player's visiblePositions each tick or on movement, and let the renderer only render entities whose positions are in the visible set. Optionally, store a 'seen' map for fog-of-war.
+
+Concrete steps
+1. Add VisionComponent data class and optional property to Actor (or maintain a map in World from actor -> VisionComponent).
+2. Implement an FOV util in a new file (e.g., project/fov/Fov.kt) — start with simple raycasting for clarity, then optimize to shadowcasting if performance requires.
+3. Hook into movement / actor actions to recompute FOV for the player (and cache). Expose a World.getVisibleEntities(viewer: Actor): List<Entity> API.
+4. Adjust ZirconRenderer to accept a visibleSet and render only visible entities (and optionally tiles marked as visible/seens).
+
+Estimate: Prototype (raycasts) 0.5–1 day; polishing, caching and shadowcasting 1–2 additional days.
+
+6) Concrete API suggestions and small changes to make integration easier
+- Add a small World facade: class World(val grid: Grid) { fun move(actor, from, to): Result; fun entities(): List<Entity>; fun observe(listener) } — this centralizes events and simplifies renderer wiring.
+- Add immutable read-only views for inventories and entity lists (avoid exposing mutable internal maps directly). For example, InventoryContainer should expose read-only map and specific operations rather than allowing direct map access.
+- Introduce an Event system (sealed interface GameEvent { EntityMoved(actor, from, to), EntityAdded, HpChanged, InventoryChanged, EntityRemoved }) and a lightweight EventBus on World.
+- Extract complex lambdas from InteractionDefinition into named functions in the corresponding class for readability and to enable unit testing.
+
+7) Tests and quality gates
+- Add unit tests for World facade, FOV, and renderer mapping logic (renderer can be tested by asserting calls to a mock drawing surface).
+- Keep existing tests (tests already present in repo) green — the above changes are additive. Prefer to add small tests first.
+
+8) Prioritized quick wins (proactive extras)
+- Add World facade and event bus (small, low-risk) to make UI integration simple.
+- Add read-only inventory accessor methods.
+- Replace empty placeholder files (Pathfinder.kt, FsmController.kt) with either a short note or remove them.
+
+Requirements coverage (this assessment)
+- OOPness: Done — reviewed and summarized
+- Extensibility: Done — assessed and provided integration steps
+- Readability: Done — noted strengths and specific improvements
+- Ease of adding Zircon input: Done — provided roadmap and estimate
+- Ease of adding Zircon output: Done — provided roadmap and estimate
+- Ease of adding visibility system: Done — provided recommended design, steps, and estimate
+
+If you want, next I can:
+- Add a small World facade and an Event type and wire a minimal ZirconRenderer stub (no external dependency required yet) as a concrete starter;
+- Implement a simple raycast FOV and tests;
+- Or produce a short patch that makes Inventory read-only and removes the empty placeholder files.
+
+End of assessment.
+
+ADDITIONAL REVIEW — HumanController, Effects, UseItemMode, Item, and action implementations
+
+Scope
+- Files inspected in this pass: `ai/HumanController.kt`, `Effects.kt`, `actions/UseItemMode.kt`, `Item.kt`, plus action files under `actions/` (AttackMode.kt, Reload.kt, Heal.kt, PickUpMode.kt, TargetSelector.kt).
+
+Summary of findings
+
+1) HumanController (project.ai.HumanController)
+- Design: Uses an FSM (gdx-ai DefaultStateMachine) and a small Behavior hierarchy to produce actions. This is a clean separation of decision logic into composable behaviors.
+- Strengths:
+  - Behaviors are small and testable units (Combat/Non-combat split).
+  - `ActionView` cleanly flattens ValidatedAction collections and provides convenient accessors.
+- Concerns / improvement opportunities:
+  - Coupling to concrete `Grid` in `getNextStepTo(goal)` (it returns null if `grid` is not `Grid`). Better: depend on a `Pathfinder` or `PathfinderProvider` interface to avoid concrete type checks and make injection/testing easier.
+  - `lastKnownTargetPosition` appears to be mutated nowhere inside the controller file — search the codebase to confirm where it's updated. If it isn't updated elsewhere, this is a logic bug: the controller will never chase or flee using this field. Consider making perception updates explicit (e.g., a `perceive(view: ActionView)` method that updates `lastKnownTargetPosition`).
+  - `view` is stored as a lateinit var populated each `decide` call. That's OK but slightly brittle; consider passing the view into behaviors or into `fsm.update()` as a parameter to avoid implicit state.
+  - Pathfinding call constructs a `GridPathfinder` each time; consider reusing a pathfinder instance or injecting one.
+  - The controller uses internal mutable thresholds and delays; expose them through a config object to simplify tuning and testing.
+
+2) Effects (project.Effects)
+- Simple sealed types: `HumanEffect` implements `HookReturnValue`; currently contains `Heal` and `ReloadRequest`.
+- This is straightforward and extensible. Note: if more effect types are added that need actor/world context, consider modeling effects as executable objects with an `apply(world, actor)` method rather than plain data classes. That keeps side-effects explicit and testable.
+
+3) UseItemMode and UseItemCapability
+- `UseItemMode` is implemented as a gating capability (`UseItemCapability`) that expects the mode to be `UseItemMode` and defers to `super.validate` for common checks — design is consistent with other modes.
+- No obvious issues here; it's a small wrapper behavior used as an indirection to item-specific modes.
+
+4) Item and InventoryContainer (project.Item)
+- `Item.getInteractionDefinitionForMode` guards item interactions by testing `contextIfNeeded?.sourceItem === this`. That is reasonable to ensure item hooks are only invoked when the item is the source.
+- Major bug in `InventoryContainer.removeBulk`:
+  - Current implementation:
+    val count = _inventory[item] ?: return Pair(item,0)
+    if (count <= countToRemove) {
+    * _inventory.remove(item)
+      return Pair(item, count)
+    }
+    else {
+      _inventory[item] = _inventory[item] as Int - count
+      return Pair(item,count)
+    }
+  - Problem: In the else branch it subtracts `count` (the current amount) from itself, resulting in zero, and returns the original count instead of the amount removed. The intended behavior is to subtract `countToRemove` and return `countToRemove`.
+  - Suggested fix (behavioral correctness):
+    val available = _inventory[item] ?: return Pair(item,0)
+    val removed = if (available <= countToRemove) available else countToRemove
+    if (available <= countToRemove) {
+       _inventory.remove(item)
+    } else {
+       _inventory[item] = available - removed
+    }
+    return Pair(item, removed)
+- `InventoryContainer.data` currently returns the mutable map `_inventory` as a `Map<Item,Int>`. This exposes internal mutability (the map can still be cast to MutableMap in client code). Return an immutable copy (e.g., `Collections.unmodifiableMap` or in Kotlin `Map.copyOf` or `Map<Item, Int>` via `toMap()`) or provide explicit read-only accessor methods.
+
+5) Action implementations (AttackMode, Reload, Heal, PickUpMode, TargetSelector)
+- Overall: Action modules follow a consistent pattern (Mode object, Context class, Capability class, failures). This makes adding new actions straightforward.
+- AttackMode:
+  - `AttackCapability.validateOutside` uses `attackType.canAttack(context)` which currently returns true for `Ranged` and `Other`. LOS/range checks for ranged attacks are TODO — ensure to implement LOS when visibility is added.
+  - `targetSelector` is `SelfTargetSelector()` which is a placeholder; for real targeting, implement proper selectors (range/LOS/area).
+- PickUpCapability:
+  - `validateOutside` checks adjacency, and that the grid entity still matches the target — good defensive checks.
+
+6) Other cross-cutting notes uncovered by this pass
+- The codebase uses `gdx-ai` (FSM) in `HumanController.kt`. This adds a dependency; ensure any UI thread concerns are handled — the FSM runs in the thread where `decide` is called; if the UI drives controllers, keep threading consistent.
+- Several TODOs and placeholder implementations remain (range/LOS selectors, pathfinder interface, better selectors). These align with earlier recommendations.
+
+Places in the original assessment I'd change / anchor points to add inline notes
+- Under "2) Extensibility / Risks": add a sentence about `HumanController` coupling to `Grid`/`GridPathfinder` and the need to inject a `Pathfinder` interface. (Mark: after "extracting some logic into services/components would improve testability and reuse.")
+- Under "4) Adding Zircon-based input...": add a short note mentioning the `gdx-ai` dependency and ensuring FSM updates occur in a consistent thread context. (Mark: end of that section.)
+- Under "5) Adding a visibility system...": call out the need to implement LOS checks used by `AttackCapability` and `TargetSelector` when visibility is added. (Mark: after the FOV steps.)
+- Under "8) Prioritized quick wins": add "Fix InventoryContainer.removeBulk bug" to the quick wins list; it's a correctness bug that should be addressed immediately. (Mark: add after existing quick wins.)
+
+Recommended immediate actions (small, high-value)
+1. Fix `InventoryContainer.removeBulk` to remove the correct amount and return the actual removed count. Add unit tests for add/remove/removeBulk behavior.
+2. Change `InventoryContainer.data` to return an immutable copy (e.g., `get() = _inventory.toMap()`) to avoid accidental external mutation. Add a small unit test to assert immutability.
+3. Introduce a `Pathfinder` interface and update `HumanController.getNextStepTo` to accept that dependency (or accept a `Pathfinder` via constructor). Alternatively, add a small `Pathfinder` provider in the `World` facade.
+4. Add a small perception update API to `HumanController` (e.g., `fun perceive(allActions: Map<ActionMode, List<ValidatedAction>>)`) so the controller can update `lastKnownTargetPosition` and other perception data; wire it in `decide` (or the caller) rather than depending on external mutation of `lastKnownTargetPosition`.
+
+Tests to add
+- Unit tests for `InventoryContainer.removeBulk` edge cases (0, less than available, exactly available, more than available).
+- Unit tests for `HumanController` behaviors: ensure behaviors produce expected actions given synthetic `ActionView` inputs (mock `PotentialActions`).
+- Small tests for `AttackCapability` validation behavior when LOS/range checks are added.
+
+If you'd like, I can now:
+- Implement and test the `InventoryContainer.removeBulk` bugfix and make `data` return an immutable view.
+- Introduce a small `Pathfinder` interface and a constructor injection for `HumanController.getNextStepTo`, plus a tiny adapter to the existing `GridPathfinder`.
+- Add a simple perception update in `HumanController` to set `lastKnownTargetPosition` when attacks are seen.
+
+Tell me which of the immediate actions above you want me to implement first (I recommend fixing the inventory bug first), and I'll apply the change and run relevant tests/checks.

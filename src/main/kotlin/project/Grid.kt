@@ -2,23 +2,10 @@ package project
 
 import kotlin.math.abs
 
-data class Position(val x:Int,val y:Int) {
-
-    operator fun plus(rhs: Position): Position {
-        return Position(x +rhs.x,y+rhs.y)
-    }
-
-    override fun toString(): String {
-        return "Position(x=$x, y=$y)"
-    }
-
-    fun isAdjacent(other: Position): Boolean {
-        return (x == other.x && abs(y - other.y) == 1) || (y == other.y && abs(x - other.x) == 1)
-    }
-}
-
 interface IGrid{
-    fun setEntity(entity: Entity?, position: Position)  //throws Exception
+    val width: Int
+    val height: Int
+    fun setEntity(entity: Entity?, position: Position)
     fun getEntity(position: Position): Entity?
     fun moveEntity(entity: Entity, oldPosition: Position, newPosition: Position)
     fun getTileType(position: Position): Tile
@@ -26,12 +13,13 @@ interface IGrid{
     //fun setTileMap()
 }
 
-class Grid(private val height: Int, private val width: Int) : IGrid {
+class Grid(override val height: Int, override val width: Int) : IGrid {
     private var tileGrid = Array(height) { Array(width){ Tile.Floor } }
     private var grid: Array<Array<Entity?>> = Array(height){Array(width){ null } }
 
-    fun inBounds(position: Position): Boolean{
-        return position.x in 0 until width && position.y in 0 until height
+    fun inBounds(position: Position): Boolean {
+        val (x, y) = position
+        return x in 0 until width && y in 0 until height
     }
 
     override fun getTileType(position: Position): Tile {
@@ -87,4 +75,23 @@ enum class Tile{
     }, Wall{
         override fun toString(): String = "#"
     };
+}
+data class Position(val x:Int,val y:Int) {
+
+    operator fun plus(rhs: Position): Position {
+        return Position(x +rhs.x,y+rhs.y)
+    }
+
+    override fun toString(): String {
+        return "Position(x=$x, y=$y)"
+    }
+
+    fun isAdjacent(other: Position): Boolean {
+        return (x == other.x && abs(y - other.y) == 1) || (y == other.y && abs(x - other.x) == 1)
+    }
+
+    // Manhattan distance in tiles
+    fun manhattanDistance(other: Position): Int {
+        return abs(x - other.x) + abs(y - other.y)
+    }
 }

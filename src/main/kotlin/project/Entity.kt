@@ -1,104 +1,116 @@
 package project
 
 import project.actions.*
-import kotlin.contracts.Effect
 
-internal interface InteractionDefinitionProvider {
-    fun getInteractionDefinitionForMode(mode: ActionMode, contextIfNeeded: ActionContext? = null): InteractionDefinition?
+
+data class InteractionHandler(
+    val hook: (Action.Possible) -> Unit,
+    val validator: (ActionContext) -> ActionFailure?,
+){
+    fun invokeHook(action: Action.Possible): Unit {
+        return hook(action)
+    }
+    fun validateInside(context: ActionContext): ActionFailure? {
+        return validator(context)
+    }
 }
 
 data class InteractionDefinition(
     val mode: ActionMode,
-    private val hook: (ValidatedAction.Possible) -> HookReturnValue,
-    private val validator: (ActionContext) -> ActionFailure?,
-)
-{
-    fun invokeHook(action: ValidatedAction.Possible): HookReturnValue {
-        return hook.invoke(action)
+    private val handler: InteractionHandler,
+) {
+    // Backwards-compatible constructor so existing call sites (mode=..., hook=..., validator=...)
+    // continue to work: it wraps hook/validator into InteractionHandler.
+    constructor(
+        mode: ActionMode,
+        hook: (Action.Possible) -> Unit,
+        validator: (ActionContext) -> ActionFailure?
+    ) : this(mode, InteractionHandler(hook, validator))
+
+    fun invokeHook(action: Action.Possible): Unit {
+        return handler.invokeHook(action)
     }
     fun validateInside(context: ActionContext): ActionFailure? {
-        return validator.invoke(context)
+        return handler.validateInside(context)
     }
 }
 
-interface AiController {
-    fun computeActions(actor: Actor): List<ValidatedAction>
+
+
+interface Controller {
+    fun decide(actor: Actor, actions: PotentialActions): Action?
 }
 
-abstract class Entity : InteractionDefinitionProvider {
+// Default no-op controller that never selects an action.
+object NoopController : Controller {
+    override fun decide(actor: Actor, actions: PotentialActions): Action? = null
+}
+
+abstract class Entity{
     protected abstract val grid: IGrid
     protected abstract var position: Position
     protected abstract var char : Char
+
+    protected abstract val interactionDefinitions: List<InteractionDefinition>
 
     @JvmName("getPositionPublic")
     fun getPosition() = position
     override fun toString() = char.toString()
     abstract fun isAlive(): Boolean
 
-    // Protected internals
-    protected abstract val interactionDefinitions: List<InteractionDefinition>
-
-    // Public, read-only views / APIs
     val modes: List<ActionMode>
-        get() = interactionDefinitions.map{it.mode}.toList().distinct()
+        get() = interactionDefinitions.map{it.mode}.distinct().toList()
 
-    override fun getInteractionDefinitionForMode(mode: ActionMode, contextIfNeeded: ActionContext?): InteractionDefinition? {
+    fun getInteractionDefinitionForMode(mode: ActionMode): InteractionDefinition? {
         return interactionDefinitions.firstOrNull { it.mode === mode }
     }
 
-    // Base Entity only consults its own hooks; subclasses may fall back to other sources (e.g., items)
-    fun invokeHook(mode: ActionMode, action: ValidatedAction.Possible): Any? {
-        return getInteractionDefinitionForMode(mode)?.invokeHook(action)
+    fun invokeHook(mode: ActionMode, action: Action.Possible){
+        getInteractionDefinitionForMode(mode)?.invokeHook(action)
     }
 
-    // Validation is kept behind a function
     fun validateInside(context: ActionContext): ActionFailure? {
         return getInteractionDefinitionForMode(context.mode)?.validateInside(context)
     }
 }
 
-abstract class Actor: Entity(){
+abstract class Actor: Entity() {
     protected abstract val capabilitiesInternal: List<Capability>
 
     open val capabilities: List<Capability>
         get() = capabilitiesInternal.toList()
 
     open fun doesContainCapability(cap: Capability): Boolean {
-        return capabilities.any {
-            cap.equalsCapability(it)
+        return capabilitiesInternal.any {
+            it == cap
         }
     }
 
-    private val interactionListInternal: PotentialActions = PotentialActions()
+    protected val interactionListInternal: PotentialActions = PotentialActions()
 
-    fun addInteraction(action: ValidatedAction) {
-        interactionListInternal.addAction(action)
-    }
-
-    fun getInteractionsForMode(mode: ActionMode): List<ValidatedAction> = interactionListInternal.getActionsForMode(mode)
-
-    fun getAllInteractions(): Map<ActionMode, List<ValidatedAction>> = interactionListInternal.getAllActions()
-
-    fun clearInteractions() = interactionListInternal.clear()
-
+    abstract val controller: Controller
 }
 
-class iHuman(
-    override var position: Position,
+class Human(
     override val grid: IGrid,
-    initialInventory: List<Pair<Item, Int>> = emptyList()
+    override var position: Position,
+    override var char: Char = '@',
+    val maxHp: Int = 100,
+    initialInventory: List<Pair<Item, Int>> = listOf(),
+    controller: Controller? = null
 ) : Actor() {
 
-    override var char: Char = '@'
-    private val maxHp = 100
-    var hp: Int = maxHp
-        private set
+    private var hpInternal: Int = maxHp
+
+    val hp get() = hpInternal
 
     override fun isAlive(): Boolean = hp > 0
 
+    override val controller: Controller = controller ?: project.ai.HumanController(this, grid)
+
     // Internal inventory
     private val inventoryInternal: InventoryContainer =
-        InventoryContainer(initialInventory.associate { it.first to it.second }.toMutableMap())
+        InventoryContainer(initialInventory.associate { it }.toMutableMap())
 
     val inventory: Map<Item, Int> get() = inventoryInternal.data.toMap()
 
@@ -106,119 +118,139 @@ class iHuman(
     private val equipmentSlots: MutableMap<EquipmentSlot, Item?> = mutableMapOf(
         EquipmentSlot.WEAPON to null,
         EquipmentSlot.ARMOR to null,
-        EquipmentSlot.ARTEFACT to null
     )
 
-    // InteractionDefinitions
+    // --- InteractionDefinition helpers for self-targeting actions ---
+
+    private fun movementHook(action: Action.Possible): Unit {
+        val ctx = action.context as MovementContext
+        val oldPosition = position
+        grid.moveEntity(this, oldPosition, ctx.targetPosition)
+        position = ctx.targetPosition
+    }
+    private fun movementValidator(context: ActionContext): ActionFailure? = null
+
+    private fun equipHook(action: Action.Possible): Unit {
+        val ctx = action.context as EquipContext
+        if (ctx.operation == EquipOperation.EQUIP) {
+            if (ctx.item != null) {
+                equipmentSlots[ctx.slot] = ctx.item
+                inventoryInternal.removeItem(ctx.item)
+            }
+        } else {
+            val item = equipmentSlots[ctx.slot]
+            if (item != null) inventoryInternal.addItem(item)
+            equipmentSlots[ctx.slot] = null
+        }
+    }
+    private fun equipValidator(context: ActionContext): ActionFailure? {
+        val ctx = context as EquipContext
+        return when (ctx.operation) {
+            EquipOperation.EQUIP ->
+                if (equipmentSlots[ctx.slot] != null) AlreadyEquipped
+                else if(ctx.item == null) MissingItem
+                else null
+            EquipOperation.UNEQUIP -> if (equipmentSlots[ctx.slot] == null) MissingItemInSlot
+            else if (ctx.item != null) InvalidSlot
+            else null
+        }
+    }
+
+    private fun attackHook(action: Action.Possible): Unit {
+        val ctx = action.context as AttackContext
+        val attacker = ctx.source
+        val attackerWeapon = (ctx.item as? Weapon) ?: (attacker as? Human)?.getEquippedItem(EquipmentSlot.WEAPON) as? Weapon
+        val baseDamage = attackerWeapon?.damage ?: ctx.damage
+        val targetArmor = (this as? Human)?.getEquippedItem(EquipmentSlot.ARMOR) as? Armor
+        val protection = targetArmor?.protection ?: 0
+        val finalDamage = (baseDamage - protection).coerceAtLeast(0)
+        if (this is Human) {
+            this.hpInternal -= finalDamage
+        }
+        if (ctx.attackType is Ranged) {
+            attackerWeapon?.consumeAmmo()
+        }
+    }
+    private fun attackValidator(context: ActionContext): ActionFailure? {
+        val ctx = context as AttackContext
+        if (ctx.attackType is Ranged) {
+            val attacker = ctx.source
+            val attackerWeapon = if (ctx.item == (attacker as? Human)?.getEquippedItem(EquipmentSlot.WEAPON) as? Weapon) ctx.item else null
+            if (attackerWeapon != null && !attackerWeapon.hasAmmo()) return OutOfAmmo
+        }
+        return null
+    }
+
+    private fun inventoryHook(action: Action.Possible): Unit {
+        val ctx = action.context as InventoryContext
+        ctx.action.operation(inventoryInternal, ctx.item)
+    }
+    private fun inventoryValidator(context: ActionContext): ActionFailure? {
+        val ctx = context as InventoryContext
+        return if (ctx.source !== this) TooFar else null
+    }
+
+
+    // --- End helpers ---
+
+    // Only self-targeting actions are defined here; item-based actions are delegated to the item
     override val interactionDefinitions: List<InteractionDefinition> = listOf(
-        // Attack: reduce target HP by damage
         InteractionDefinition(
-            mode = Attack,
-            hook = { action ->
-                val ctx = action.context as AttackContext
-                val damage = ctx.damage
-                    hp -= damage
-                NoReturnValue
-            },
-            validator = { _ -> null } // no validation
+            mode = AttackMode,
+            hook = this::attackHook,
+            validator = this::attackValidator
         ),
-
-        // Equip/Unequip
         InteractionDefinition(
-            mode = Equip,
-            hook = { action ->
-                val ctx = action.context as EquipContext
-                if (ctx.operation == EquipOperation.EQUIP) {
-                    equipmentSlots[ctx.slot] = ctx.sourceItem
-                    inventoryInternal.removeItem(equipmentSlots[ctx.slot] as Item)
-                } else {
-                    inventoryInternal.addItem(equipmentSlots[ctx.slot] as Item)
-                    equipmentSlots[ctx.slot] = null
-                }
-            },
-            validator = { context ->
-                val ctx = context as EquipContext
-                when (ctx.operation) {
-                    EquipOperation.EQUIP -> if (equipmentSlots[ctx.slot] != null) AlreadyEquipped else null
-                    EquipOperation.UNEQUIP -> if (equipmentSlots[ctx.slot] == null) MissingItemInSlot else null
-                }
-            }
+            mode = EquipMode,
+            hook = this::equipHook,
+            validator = this::equipValidator
         ),
-
-        // Movement
         InteractionDefinition(
-            mode = Movement,
-            hook = { action ->
-                val ctx = action.context as MovementContext
-                val oldPosition = position
-                grid.moveEntity(this, oldPosition,ctx.targetPosition)
-                position = ctx.targetPosition
-                NoReturnValue
-            },
-            validator = { _ -> null } // no validation
+            mode = InventoryMode,
+            hook = this::inventoryHook,
+            validator = this::inventoryValidator
         ),
-
-        // UseItem
-        InteractionDefinition(
-            mode = UseItem,
-            hook = { action ->
-                val ctx = action.context as UseItemContext
-                ctx.sourceItem.getInteractionDefinitionForMode(ctx.mode, ctx)?.invokeHook(
-                    action
-                )
-                NoReturnValue
-            },
-            validator = { context ->
-                val ctx = context as UseItemContext
-                if (inventoryInternal.data.containsKey(ctx.sourceItem)) null
-                else ItemNotPresentInContainer
-            }
-        ),
-
-        // Inventory
-        InteractionDefinition(
-            mode = Inventory,
-            hook = { action ->
-                val ctx = action.context as InventoryContext
-                ctx.action.operation(inventoryInternal, ctx.sourceItem)
-            },
-            validator = { context ->
-                val ctx = context as InventoryContext
-                if (ctx.source !== this) TooFar else null
-            }
-        )
     )
+
+
+    // Helpers to inspect equipped items
+    fun isItemEquippedInSlot(item: Item, slot: EquipmentSlot): Boolean {
+        return equipmentSlots[slot] === item
+    }
+    fun getEquippedItem(slot: EquipmentSlot): Item? = equipmentSlots[slot]
+
+    // Remove ammo from inventory for reloading
+    fun removeAmmoFromInventory(ammoType: Item, requested: Int): Int {
+        val pair = inventoryInternal.removeBulk(ammoType, requested)
+        return pair.second
+    }
 
     private fun applyEffects(effects: List<HumanEffect>) {
         effects.forEach { effect ->
             when (effect) {
-                is Heal -> hp += effect.amount
-
-                // is Eat -> food += effect.nutrition
-
-                is Reload -> {
-                    inventoryInternal.removeBulk(effect.ammoType, effect.amount)
+                is Heal -> hpInternal += effect.amount.coerceAtMost(hpInternal+effect.amount)
+                is ReloadRequest -> {
+                    val removed = removeAmmoFromInventory(effect.ammoType, effect.requested)
+                    if (removed > 0) {
+                        effect.weapon.acceptReload(removed)
+                    }
                 }
             }
         }
     }
 
-    // Capabilities include default actions plus inventory items
+    // Capabilities: only self-targeting and container actions are defined here; item-based come from items
     override val capabilitiesInternal: List<Capability>
         get() = listOf(
-            MovementCapability(null, TargetType.SELF_ONLY),
-            AttackCapability(null, Melee),
-            InventoryCapability(TargetType.SELF_ONLY)
+            MovementCapability(TargetType.SELF_ONLY,
+                InteractionHandler(
+                hook = this::movementHook,
+                validator = this::movementValidator)
+                ),
+            InventoryCapability(),
+            PickUpCapability(),
         ) + inventory.keys.flatMap { it.capabilities }
-
-    val itemAllowedModes: List<ActionMode>
-        get() = inventory.keys.flatMap { it.modes }.distinct()
-
-    // Accessors for equipment (optional)
-    fun getEquipped(slot: EquipmentSlot): Item? = equipmentSlots[slot]
 }
-
-
 
 class ItemEntity(
     override val grid: IGrid,
@@ -230,18 +262,15 @@ class ItemEntity(
     // Interaction for picking up
     override val interactionDefinitions: List<InteractionDefinition> = listOf(
         InteractionDefinition(
-            mode = PickUp,
+            mode = PickUpMode,
             validator = { context ->
-                // Fail if the item is no longer alive
                 if (!alive) EntityDoesNotExist else null
             },
             hook = { action ->
                 val ctx = action.context as PickUpContext
-                // Transfer the item to the target inventory
                 ctx.targetInventory.addItem(item)
-                // Mark this entity as no longer alive
                 alive = false
-                NoReturnValue
+                null
             }
         )
     )
@@ -260,13 +289,38 @@ class Chest(
 
     override val interactionDefinitions: List<InteractionDefinition> = listOf(
         InteractionDefinition(
-            mode = Inventory,
+            mode = InventoryMode,
             validator = { null },
             hook = { action ->
                 val ctx = action.context as InventoryContext
                 // Execute the operation requested by context
-                ctx.action.operation(inventory, ctx.sourceItem)
-                NoReturnValue
+                ctx.action.operation(inventory, ctx.item)
+                null
+            }
+        )
+    )
+}
+// Corpse: behaves like a Chest (provides an inventory) but represents a dead body.
+// Code intentionally mirrors Chest to keep behavior identical; icon and isAlive differ.
+class Corpse(
+    override val grid: IGrid,
+    override var position: Position,
+    val inventory: InventoryContainer = InventoryContainer(mutableMapOf())
+) : Entity() {
+    override fun isAlive(): Boolean = false
+
+    // Distinct icon for corpse — lowercase 'c'
+    override var char: Char = 'c'
+
+    override val interactionDefinitions: List<InteractionDefinition> = listOf(
+        InteractionDefinition(
+            mode = InventoryMode,
+            validator = { null },
+            hook = { action ->
+                val ctx = action.context as InventoryContext
+                // Execute the operation requested by context
+                ctx.action.operation(inventory, ctx.item)
+                null
             }
         )
     )
@@ -287,10 +341,13 @@ class Trap(
 
     // Capabilities include a single AttackCapability with Other attack type
     private val attackCapability = AttackCapability(
-        sourceItem = null,
-        attackType = Other
+        weapon = null,
+        attackType = Other,
+        damage = damage
     )
 
     override val capabilitiesInternal: List<Capability>
         get() = listOf(attackCapability)
+
+    override val controller: Controller = NoopController
 }
